@@ -17,6 +17,9 @@ import { concatEnv, execFileAsync, stringifyExecFile } from "../exec-helper";
 const path: typeof import("node:path") = require("node:path");
 const fs: typeof import("node:fs") = require("node:fs");
 const process: typeof import("process") = require("node:process");
+const child_process: typeof import("child_process") = require("node:child_process");
+const { promisify }: typeof import("util") = require("node:util");
+const execAsync = promisify(child_process.exec);
 
 export type PodmanSpecs = {
     podmanInstalled: boolean;
@@ -181,6 +184,9 @@ export class PodmanContainer extends ContainerManager {
             podmanInstalled: false,
             podmanComposeInstalled: false,
         };
+
+        console.log("process.env: ", process.env);
+        console.log("execAsync env:", (await execAsync("env", { shell: process.env.SHELL })).stdout);
 
         try {
             const { stdout: podmanOutput } = await execFileAsync("podman", ["--version"]);
