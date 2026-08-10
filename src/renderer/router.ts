@@ -12,6 +12,7 @@ import Winboat from "./views/Config/Winboat.vue";
 import General from "./views/Config/General.vue";
 import Display from "./views/Config/Display.vue";
 import Devices from "./views/Config/Devices.vue";
+import Index from "./views/Config/Index.vue";
 
 export const routes: RouteRecordRaw[] = [
     { path: "/", component: Blank, meta: { icon: "line-md:loading-loop" } },
@@ -19,39 +20,53 @@ export const routes: RouteRecordRaw[] = [
     { path: "/Migration", component: Migration, meta: { icon: "fluent:home-32-filled", } },
     { path: "/Setup", component: SetupUI, meta: { icon: "fluent-mdl2:install-to-drive", } },
     { path: "/Apps", component: Apps, meta: { icon: "fluent:apps-32-filled", nav: true } },
-    { path: "/Configuration", component: Config, meta: { icon: "icon-park-outline:config", nav: true }, },
     { 
-        path: "/Configuration/WinBoat", 
-        component: Winboat, 
+        path: "/Configuration", 
+        component: Config, 
         meta: { 
-            icon: "winboat:config-logo",
-            desc: "Lorem Ipsum WinBoat"
-        } 
-    }, 
-    { 
-        path: "/Configuration/General", 
-        component: General, 
-        meta: { 
-            icon: "fluent:wrench-screwdriver-32-regular" ,
-            desc: "Lorem Ipsum General"
-        } 
-    },
-    { 
-        path: "/Configuration/Display", 
-        component: 
-        Display, 
-        meta: { 
-            icon: "ci:monitor",
-            desc: "Lorem Ipsum Display"
-        } 
-    },
-    { 
-        path: "/Configuration/Devices", 
-        component: Devices, 
-        meta: { 
-            icon: "tabler:device-usb",
-            desc: "Lorem Ipsum Devices"
-        } 
+            icon: "icon-park-outline:config", 
+            nav: true 
+        }, 
+        children: [
+            {
+                path: "",
+                component: Index
+            },
+            { 
+                path: "WinBoat", 
+                component: Winboat, 
+                meta: { 
+                    icon: "winboat:config-logo",
+                    desc: "Lorem Ipsum WinBoat"
+                } 
+            }, 
+            { 
+                path: "General", 
+                component: General, 
+                meta: { 
+                    icon: "fluent:wrench-screwdriver-32-regular" ,
+                    desc: "Lorem Ipsum General"
+                } 
+            },
+            { 
+                path: "Display", 
+                component: 
+                Display, 
+                meta: { 
+                    icon: "ci:monitor",
+                    desc: "Lorem Ipsum Display"
+                } 
+            },
+            { 
+                path: "Devices", 
+                component: Devices, 
+                meta: { 
+                    icon: "tabler:device-usb",
+                    desc: "Lorem Ipsum Devices"
+                } 
+            },
+            
+        ]
     },
     { path: "/About", component: About, meta: { icon: "fluent:info-32-filled", nav: true } },
 ];

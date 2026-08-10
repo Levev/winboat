@@ -232,7 +232,7 @@ onMounted(() => {
     }
 
     if (!hasHostPort(compose)) {
-        const delimiter = compose.value!.services.windows.environment.HOST_PORTS ? "" : ",";
+        const delimiter = compose.value!.services.windows.environment.HOST_PORTS.length == 0 ? "" : ",";
 
         compose.value!.services.windows.environment.HOST_PORTS ||= "";
         compose.value!.services.windows.environment.HOST_PORTS += delimiter + GUEST_QMP_PORT;

@@ -133,7 +133,6 @@ import {
     type RenderDevice,
 } from "../../lib/gpu";
 import { configureGpuContainer, gpuContainerConfigNeedsUpdate } from "../../lib/gpu-container";
-import { type Device } from "usb";
 import {
     RESTART_UNLESS_STOPPED,
     RESTART_NO,

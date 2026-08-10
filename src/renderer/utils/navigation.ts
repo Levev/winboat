@@ -1,19 +1,19 @@
-import { router } from "../router";
+export type RemoveNavigationEvents = () => void;
 
-export function mouseBack(e: MouseEvent) {
-    if (e.button === 3) router.back();
-}
+export function addNavigationEvents(goBack: () => void): RemoveNavigationEvents {
+    const mouseBack = (event: MouseEvent) => {
+        if (event.button === 3) goBack();
+    };
 
-export function escBack(e: KeyboardEvent) {
-    if (e.key === "Escape") router.back();
-}
+    const escBack = (event: KeyboardEvent) => {
+        if (event.key === "Escape") goBack();
+    };
 
-export function addNavigationEvents() {
     window.addEventListener("mouseup", mouseBack);
     window.addEventListener("keyup", escBack);
-}
 
-export function removeNavigationEvents() {
-    window.removeEventListener("mouseup", mouseBack);
-    window.removeEventListener("keyup", escBack);
+    return () => {
+        window.removeEventListener("mouseup", mouseBack);
+        window.removeEventListener("keyup", escBack);
+    };
 }

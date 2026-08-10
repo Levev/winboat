@@ -1,5 +1,5 @@
 <template>
-    <main 
+    <main
         class="overflow-hidden relative w-screen h-screen"
         :class="{ 'disable-animations': (transitionControl === 'none') }"
     >
@@ -105,11 +105,7 @@
                     <span class="font-semibold text-center"> RDP Session Active </span>
                 </div>
                 <div class="flex flex-row gap-4 items-center p-4">
-                    <img
-                        class="w-16 rounded-full"
-                        src="/img/pfp.svg"
-                        alt="Profile"
-                    />
+                    <img class="w-16 rounded-full" src="/img/pfp.svg" alt="Profile" />
                     <div>
                         <x-label class="text-lg font-semibold">{{ os.userInfo().username }}</x-label>
                         <x-label class="text-[0.8rem]">Local Account</x-label>
@@ -121,10 +117,8 @@
                     :key="route.path"
                 >
                     <x-navitem>
-                        <Icon 
-                            class="mr-4 w-5 h-5"
-                            :icon="(route.meta!.icon as string)" />
-                        <x-label>{{ splitRoute(route.path)?.at(-1)?.token }}</x-label>
+                        <Icon class="mr-4 w-5 h-5" :icon="(route.meta!.icon as string)" />
+                        <x-label>{{ route.path }}</x-label>
                     </x-navitem>
                 </RouterLink>
                 <div class="flex flex-col justify-end items-center p-4 h-full">
@@ -135,22 +129,22 @@
                 <div class="flex flex-row gap-2 items-center my-6 select-none">
                     <Icon class="w-6 h-6 opacity-60" icon="icon-park-solid:toolkit"></Icon>
                     <h1 class="my-0 text-2xl font-semibold opacity-60">WinBoat</h1>
-                    <template
-                        v-for="(token, key) in routerTokens"
-                        :key="key"
-                    >
+                    <template v-for="(record, index) in breadcrumbs" :key="record.path">
                         <Icon class="w-6 h-6" icon="bitcoin-icons:caret-right-filled"></Icon>
-                        <Icon 
+                        <Icon
                             class="w-6 h-6"
-                            :class="{ 'opacity-75': routerTokens?.lastIndexOf(token)! < routerTokens?.length! - 1 }"
-                            :icon="token.icon!"
+                            :class="{ 'opacity-75': index < breadcrumbs.length - 1 }"
+                            :icon="(record.meta.icon as string)"
                         />
-                        <h1 
-                            class="my-0 text-2xl font-semibold"
-                            :class="{ 'opacity-75 hover:underline': routerTokens?.lastIndexOf(token)! < routerTokens?.length! - 1 }"
-                            @click="navbarClick(token)"
+                        <RouterLink
+                            v-if="index < breadcrumbs.length - 1"
+                            class="text-2xl font-semibold opacity-75 hover:underline"
+                            :to="record.path"
                         >
-                            {{ token.token }}
+                            {{ record.meta.label }}
+                        </RouterLink>
+                        <h1 v-else class="my-0 text-2xl font-semibold">
+                            {{ record.meta.label }}
                         </h1>
                     </template>
                 </div>
@@ -169,10 +163,9 @@
 </template>
 
 <script setup lang="ts">
-import { NavigationGuardNext, RouteLocationNormalized, RouteLocationNormalizedLoaded, RouteRecordRaw, RouterLink, useRoute, useRouter } from "vue-router";
-import { joinRouteTokens, routes, RouteToken, splitRoute } from "./router";
+import { RouteRecordRaw, RouterLink, useRoute, useRouter } from "vue-router";
 import { Icon } from "@iconify/vue";
-import { onMounted, ref, useTemplateRef, watch, reactive, computed } from "vue";
+import { computed, onMounted, ref, useTemplateRef, watch, reactive } from "vue";
 import { isInstalled } from "./lib/install";
 import { Winboat } from "./lib/winboat";
 import { openAnchorLink } from "./utils/openLink";
@@ -181,13 +174,11 @@ import { USBManager } from "./lib/usbmanager";
 import { NOVNC_URL } from "./lib/constants";
 import { performAutoMigrations } from "./lib/migrate";
 import { addWinBoatIconCollection } from "./utils/icons";
-import { addNavigationEvents, removeNavigationEvents } from "./utils/navigation";   
 import winboatIcon from "./assets/winboat_iconify.svg?raw";
+import { routes } from "./router";
 
 const { BrowserWindow }: typeof import("@electron/remote") = require("@electron/remote");
 const os: typeof import("os") = require("node:os");
-const path: typeof import("path") = require("node:path");
-const { readFile }: typeof import("node:fs/promises") = require("node:fs/promises");
 
 const $router = useRouter();
 const $route = useRoute();
@@ -200,7 +191,7 @@ let updateTimeout: NodeJS.Timeout | null = null;
 const manualUpdateRequired = ref(false);
 const MANUAL_UPDATE_TIMEOUT = 60000; // 60 seconds
 const updateDialog = useTemplateRef("updateDialog");
-const routerTokens = ref<RouteToken[]>();
+const breadcrumbs = computed(() => $route.matched.filter(record => record.meta.label));
 
 const transitionControl = ref<"all" | "none">("all");
 
@@ -210,8 +201,8 @@ onMounted(async () => {
     addWinBoatIconCollection({
         "config-logo": {
             body: winboatIcon
-        }
-    })
+        },
+    });
 
     if (winboatInstalled) {
         wbConfig = reactive(WinboatConfig.getInstance()); // Instantiate singleton class
@@ -254,29 +245,6 @@ onMounted(async () => {
         transitionControl.value = wbConfig?.config.disableAnimations ? "none" : "all";
     }, 1000);
 });
-
-$router.beforeResolve((to: RouteLocationNormalized, from: RouteLocationNormalizedLoaded, next: NavigationGuardNext) => {
-    routerTokens.value = splitRoute(to.fullPath);
-    next();
-})
-
-$router.afterEach((to, from, _) => {
-    const toSplit = splitRoute(to.fullPath);
-    const fromSplit = splitRoute(from.fullPath);
-
-    const isConfigSubroute = (tokens: RouteToken[]) => tokens.length >= 2 && tokens[0].token === "Configuration";
-
-    if(isConfigSubroute(toSplit)) addNavigationEvents();
-    if(isConfigSubroute(fromSplit)) removeNavigationEvents();
-})
-
-function navbarClick(token: RouteToken) {
-    const idx = routerTokens.value?.lastIndexOf(token)!;
-
-    if(idx >= routerTokens.value?.length! - 1) return;
-    
-    $router.push(joinRouteTokens(routerTokens.value!.slice(0, idx + 1)))
-}
 
 function handleMinimize() {
     window.electronAPI.minimizeWindow();
@@ -389,7 +357,12 @@ main {
     --transitionControl: v-bind(transitionControl);
 }
 
-.transition, .transition-all, .transition-transform, .transition-opacity, .opening-transition, x-input::before {
+.transition,
+.transition-all,
+.transition-transform,
+.transition-opacity,
+.opening-transition,
+x-input::before {
     transition-property: var(--transitionControl) !important;
 }
 </style>
