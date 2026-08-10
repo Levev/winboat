@@ -181,8 +181,9 @@ import { USBManager } from "./lib/usbmanager";
 import { NOVNC_URL } from "./lib/constants";
 import { performAutoMigrations } from "./lib/migrate";
 import { addWinBoatIconCollection } from "./utils/icons";
-import { ICONS_PATH } from "./lib/constants";
-import { addNavigationEvents, removeNavigationEvents } from "./utils/navigation";
+import { addNavigationEvents, removeNavigationEvents } from "./utils/navigation";   
+import winboatIcon from "./assets/winboat_iconify.svg?raw";
+
 const { BrowserWindow }: typeof import("@electron/remote") = require("@electron/remote");
 const os: typeof import("os") = require("node:os");
 const path: typeof import("path") = require("node:path");
@@ -208,7 +209,7 @@ onMounted(async () => {
 
     addWinBoatIconCollection({
         "config-logo": {
-            body: (await readFile(path.join(ICONS_PATH, "winboat_iconify.svg"))).toString()
+            body: winboatIcon
         }
     })
 
