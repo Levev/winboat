@@ -19,8 +19,11 @@ export type InstallConfiguration = {
     username: string;
     password: string;
     customIsoPath?: string;
-    shareHomeFolder: boolean;
+    sharedFolderPath?: string;
     container: ContainerRuntimes;
+    gpuEnabled: boolean;
+    gpuVramGB: number;
+    renderDevice: string;
 };
 
 export type WinApp = {
@@ -35,18 +38,6 @@ export type WinApp = {
 
 export type CustomAppCallbacks = {
     [key: string]: null | ((context: Winboat) => void);
-};
-
-export type PortEntryProtocol = "tcp" | "udp";
-
-export type LongPortMapping = {
-    target: number;
-    published?: string;
-    host_ip?: string;
-    protocol?: PortEntryProtocol;
-    app_protocol?: string;
-    mode?: "host" | "ingress";
-    name?: string;
 };
 
 export type ComposeConfig = {
@@ -77,13 +68,26 @@ export type ComposeConfig = {
                 [key: string]: string; // Allow additional env vars
             };
             privileged?: boolean;
-            ports: Array<string | LongPortMapping>;
+            ports: string[];
             network_mode?: string;
             cap_add: string[];
             stop_grace_period: string;
             restart: string;
             volumes: string[];
             devices: string[];
+            deploy?: {
+                resources?: {
+                    reservations?: {
+                        devices?: {
+                            driver?: string;
+                            device_ids?: string[];
+                            count?: number | "all";
+                            capabilities: string[];
+                            options?: Record<string, string>;
+                        }[];
+                    };
+                };
+            };
         };
     };
 };
@@ -109,12 +113,6 @@ export type GuestServerVersion = {
     version: string;
     commit_hash: string;
     build_time: string;
-};
-
-export type GuestServerUpdateResponse = {
-    filename: string;
-    status: string;
-    temp_path: string;
 };
 
 export type USBDevice = {

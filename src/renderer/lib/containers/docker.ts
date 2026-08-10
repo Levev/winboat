@@ -1,7 +1,6 @@
 import { ComposeConfig } from "../../../types";
 import { DOCKER_DEFAULT_COMPOSE } from "../../data/docker";
 import { capitalizeFirstLetter } from "../../utils/capitalize";
-import { ComposePortEntry } from "../../utils/port";
 import { WINBOAT_DIR } from "../constants";
 import {
     ComposeArguments,
@@ -10,6 +9,7 @@ import {
     containerLogger,
     ContainerManager,
     ContainerStatus,
+    redactComposeSecrets,
 } from "./container";
 import YAML from "yaml";
 import { execFileAsync, stringifyExecFile } from "../exec-helper";
@@ -29,8 +29,6 @@ export class DockerContainer extends ContainerManager {
     composeFilePath = path.join(WINBOAT_DIR, "docker-compose.yml"); // TODO: If/when we support multiple VM's we need to put this in the constructor
     executableAlias = "docker";
 
-    cachedPortMappings: ComposePortEntry[] | null = null;
-
     constructor() {
         super();
     }
@@ -40,7 +38,7 @@ export class DockerContainer extends ContainerManager {
         fs.writeFileSync(this.composeFilePath, composeContent, { encoding: "utf-8" });
 
         containerLogger.info(`Wrote to compose file at: ${this.composeFilePath}`);
-        containerLogger.info(`Compose file content: ${JSON.stringify(composeContent, null, 2)}`);
+        containerLogger.info(`Compose file content:\n${redactComposeSecrets(composeContent)}`);
     }
 
     async compose(direction: ComposeDirection, extraArgs: ComposeArguments[] = []): Promise<void> {
@@ -54,7 +52,7 @@ export class DockerContainer extends ContainerManager {
         try {
             const { stderr } = await execFileAsync(this.executableAlias, args);
             if (stderr) {
-                containerLogger.error(stderr);
+                containerLogger.info(stderr.trim());
             }
         } catch (e) {
             containerLogger.error(`Failed to run compose command '${stringifyExecFile(this.executableAlias, args)}'`);
@@ -73,31 +71,6 @@ export class DockerContainer extends ContainerManager {
             containerLogger.error(e);
             throw e;
         }
-    }
-
-    async port(): Promise<ComposePortEntry[]> {
-        const args = ["port", this.containerName];
-        const ret = [];
-
-        try {
-            const { stdout } = await execFileAsync(this.executableAlias, args);
-
-            for (const line of stdout.trim().split("\n")) {
-                const parts = line.split("->").map(part => part.trim());
-                const hostPart = parts[1];
-                const containerPart = parts[0];
-
-                ret.push(new ComposePortEntry(`${hostPart}:${containerPart}`));
-            }
-        } catch (e) {
-            containerLogger.error(`Failed to run container action '${stringifyExecFile(this.executableAlias, args)}'`);
-            containerLogger.error(e);
-            throw e;
-        }
-
-        containerLogger.info("Docker container active port mappings: ", JSON.stringify(ret));
-        this.cachedPortMappings = ret;
-        return ret;
     }
 
     async remove(): Promise<void> {

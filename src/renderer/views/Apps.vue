@@ -192,8 +192,11 @@
                     v-for="app of computedApps"
                     :key="app.id"
                     class="flex relative flex-row gap-2 justify-between items-center p-2 my-0 backdrop-blur-xl backdrop-brightness-150 cursor-pointer generic-hover bg-neutral-800/20"
-                    :class="{ 'bg-gradient-to-r from-yellow-600/20 bg-neutral-800/20': app.Source === 'custom' }"
-                    @click="winboat.launchApp(app)"
+                    :class="{
+                        'bg-gradient-to-r from-yellow-600/20 bg-neutral-800/20': app.Source === 'custom',
+                        'app-launching': launchingAppId === app.id,
+                    }"
+                    @click="handleLaunchApp(app)"
                     @contextmenu="openContextMenu($event, app)"
                 >
                     <div class="flex flex-row items-center gap-2 w-[85%]">
@@ -261,6 +264,7 @@ import { AppIcons, DEFAULT_ICON } from "../data/appicons";
 import { debounce } from "../utils/debounce";
 import { Jimp, JimpMime } from "jimp";
 import { WinboatConfig } from "../lib/config";
+import { WINBOAT_API_URL } from "../lib/constants";
 const nodeFetch: typeof import("node-fetch").default = require("node-fetch");
 const FormData: typeof import("form-data") = require("form-data");
 
@@ -345,13 +349,13 @@ onMounted(async () => {
 
 async function refreshApps() {
     if (winboat.isOnline.value) {
-        const loadedApps = await winboat.appMgr!.getApps(winboat.apiUrl!);
+        const loadedApps = await winboat.appMgr!.getApps();
         apps.value = loadedApps.map(app => ({
             ...app,
             id: crypto.randomUUID(),
         }));
         // Run in background, won't impact UX
-        await winboat.appMgr!.updateAppCache(winboat.apiUrl!);
+        await winboat.appMgr!.updateAppCache();
     }
 }
 
@@ -359,7 +363,7 @@ const debouncedFetchIcon = debounce(async (newVal: string, oldVal: string) => {
     if (newVal !== oldVal && newVal !== "") {
         const formData = new FormData();
         formData.append("path", newVal);
-        const iconRes = await nodeFetch(`${winboat.apiUrl!}/get-icon`, {
+        const iconRes = await nodeFetch(`${WINBOAT_API_URL}/get-icon`, {
             method: "POST",
             body: formData as any,
         });
@@ -399,6 +403,16 @@ const customAppAddErrors = computed(() => {
 
     return errors;
 });
+
+const launchingAppId = ref<string | null>(null);
+
+function handleLaunchApp(app: WinApp) {
+    launchingAppId.value = app.id!;
+    winboat.launchApp(app);
+    setTimeout(() => {
+        launchingAppId.value = null;
+    }, 1200);
+}
 
 const contextMenuRef = ref();
 const contextMenuTarget = ref<WinApp | null>(null);
@@ -547,7 +561,30 @@ x-menu .qualifier {
     display: none;
 }
 
-x-menu 
+@keyframes launch-pulse {
+    0% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(167, 138, 249, 0);
+    }
+    10% {
+        transform: scale(0.97);
+    }
+    30% {
+        transform: scale(1);
+        box-shadow: 0 0 14px 3px rgba(167, 138, 249, 0.4);
+    }
+    65% {
+        box-shadow: 0 0 20px 5px rgba(167, 138, 249, 0.15);
+    }
+    100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(167, 138, 249, 0);
+    }
+}
+
+.app-launching {
+    animation: launch-pulse 1.2s ease-out;
+}
 
 .apps-move, /* apply transition to moving elements */
 .apps-enter-active,

@@ -172,7 +172,6 @@ import {
     USB_VID_BLACKLIST,
     GUEST_QMP_PORT,
 } from "../../lib/constants";
-import { ComposePortEntry, ComposePortMapper, Range } from "../../utils/port";
 
 // For General
 const wbConfig = reactive(WinboatConfig.getInstance());
@@ -187,11 +186,6 @@ const loadedDom = ref(false);
 // For USB Devices
 const availableDevices = ref<Device[]>([]);
 
-// For handling the QMP port, as we can't rely on the winboat instance doing this for us.
-// A great example is when the container is offline. In that case, winboat's portManager isn't instantiated.
-let portMapper = ref<ComposePortMapper | null>(null);
-// ^ Has to be reactive for usbPassthroughDisabled computed to trigger.
-
 // Constants
 const USB_BUS_PATH = "/dev/bus/usb:/dev/bus/usb";
 const QMP_ARGUMENT = "-qmp tcp:0.0.0.0:7149,server,wait=off"; // 7149 can remain hardcoded as it refers to a guest port
@@ -200,17 +194,15 @@ const hasUsbVolume = (_compose: typeof compose) =>
     _compose.value?.services.windows.volumes?.some(x => x.includes(USB_BUS_PATH));
 const hasQmpArgument = (_compose: typeof compose) =>
     _compose.value?.services.windows.environment.ARGUMENTS?.includes(QMP_ARGUMENT);
-const hasQmpPort = () => portMapper.value!.hasShortPortMapping(GUEST_QMP_PORT) ?? false;
 const hasHostPort = (_compose: typeof compose) =>
     _compose.value?.services.windows.environment.HOST_PORTS?.includes(GUEST_QMP_PORT.toString());
 
 const usbPassthroughDisabled = computed(() => {
-    return !hasUsbVolume(compose) || !hasQmpArgument(compose) || !hasQmpPort() || !hasHostPort(compose);
+    return !hasUsbVolume(compose) || !hasQmpArgument(compose) || !hasHostPort(compose);
 });
 
 onMounted(() => {
     compose.value = Winboat.readCompose(winboat.containerMgr!.composeFilePath);
-    portMapper.value = new ComposePortMapper(compose.value);
     refreshAvailableDevices();
 
     setTimeout(() => {
@@ -233,21 +225,6 @@ onMounted(() => {
     if (!hasUsbVolume(compose)) {
         compose.value!.services.windows.volumes.push(USB_BUS_PATH);
     }
-    if (!hasQmpPort()) {
-        const composePorts = winboat.containerMgr!.defaultCompose.services.windows.ports;
-        const portEntries = composePorts.filter(x => typeof x === "string").map(x => new ComposePortEntry(x));
-        const QMPPredicate = (entry: ComposePortEntry) =>
-            (entry.host instanceof Range || Number.isNaN(entry.host)) && // We allow NaN in case the QMP port entry isn't already there on podman for whatever reason
-            typeof entry.container === "number" &&
-            entry.container === GUEST_QMP_PORT;
-        const QMPPort = portEntries.find(QMPPredicate)!.host;
-
-        portMapper.value!.setShortPortMapping(GUEST_QMP_PORT, QMPPort, {
-            protocol: "tcp",
-            hostIP: "127.0.0.1",
-        });
-    }
-
 
     if (!hasQmpArgument(compose)) {
         compose.value!.services.windows.environment.ARGUMENTS ||= "";

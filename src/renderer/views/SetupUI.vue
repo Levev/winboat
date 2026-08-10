@@ -77,9 +77,9 @@
                         </p>
                         <ul class="text-lg text-gray-400 list-none space-y-1.5 bg-neutral-800 py-3 rounded-lg">
                             <li class="flex items-center gap-2">
-                                <span v-if="specs.ramGB >= 4" class="text-green-500">✔</span>
+                                <span v-if="specs.ramGB >= MIN_HOST_RAM_GB" class="text-green-500">✔</span>
                                 <span v-else class="text-red-500">✘</span>
-                                At least 4 GB of RAM (Detected: {{ specs.ramGB }} GB)
+                                At least {{ MIN_HOST_RAM_GB }} GB of RAM (Detected: {{ specs.ramGB }} GB)
                             </li>
 
                             <li class="flex items-center gap-2">
@@ -107,10 +107,7 @@
                                 <span v-else class="text-red-500">✘</span>
 
                                 <div>
-                                    <x-select
-                                        @change="(e: any) => (containerRuntime = e.detail.newValue)"
-                                        class="w-fit"
-                                    >
+                                    <x-select @change="handleContainerRuntimeChange" class="w-fit">
                                         <x-menu>
                                             <x-menuitem
                                                 v-for="(runtime, key) in Object.values(ContainerRuntimes)"
@@ -125,7 +122,11 @@
                                 </div>
                                 installed
                                 <a
-                                    href="https://docs.docker.com/engine/install/"
+                                    :href="
+                                        containerRuntime === ContainerRuntimes.PODMAN
+                                            ? 'https://podman.io/getting-started/installation'
+                                            : 'https://docs.docker.com/engine/install/'
+                                    "
                                     @click="openAnchorLink"
                                     target="_blank"
                                     class="text-violet-400 hover:underline ml-1"
@@ -239,12 +240,26 @@
                                 </a>
                             </li>
                         </ul>
+                        <div class="flex items-center gap-2 text-xs text-neutral-500">
+                            <Icon
+                                icon="mdi:refresh"
+                                class="size-3.5"
+                                :class="{ 'animate-spin': checkingPrerequisites }"
+                            />
+                            <span>Next check</span>
+                            <div class="h-0.5 flex-1 overflow-hidden rounded-full bg-neutral-700">
+                                <div
+                                    :key="prerequisiteRefreshSequence"
+                                    class="prerequisite-refresh-progress size-full bg-violet-400/60"
+                                ></div>
+                            </div>
+                        </div>
                         <div class="flex flex-row gap-4 mt-6">
                             <x-button class="px-6" @click="currentStepIdx--">Back</x-button>
                             <x-button
                                 toggled
                                 class="px-6"
-                                @click="currentStepIdx++"
+                                @click="continueFromPrerequisites"
                                 :disabled="!satisfiesPrequisites(specs, containerSpecs)"
                             >
                                 Next
@@ -537,7 +552,7 @@
                                 <label for="select-ram" class="text-sm text-neutral-400">
                                     Select RAM
                                     <span
-                                        v-if="memoryInfo.availableGB < ramGB"
+                                        v-if="ramGB < RECOMMENDED_VM_RAM_GB || memoryInfo.availableGB < ramGB"
                                         class="relative group text-white font-bold text-xs rounded-full bg-red-600 px-2 pb-0.5 ml-2 hover:bg-red-700 transition"
                                     >
                                         <Icon icon="line-md:alert" class="inline size-4 -translate-y-0.5" />
@@ -545,10 +560,16 @@
                                         <span
                                             class="absolute bottom-5 right-[-160px] z-50 w-[320px] bg-neutral-900 text-xs text-gray-300 rounded-lg shadow-lg px-3 py-2 hidden group-hover:block transition-opacity duration-200 pointer-events-none"
                                         >
-                                            You don't have enough unused memory available to allocate the requested
-                                            amount of RAM. You currently have ~{{ memoryInfo.availableGB }} GB of unused
-                                            memory available. If you continue with this amount of RAM, the container
-                                            will likely crash.
+                                            <span v-if="ramGB < RECOMMENDED_VM_RAM_GB" class="block">
+                                                Allocating less than the recommended {{ RECOMMENDED_VM_RAM_GB }} GB of
+                                                RAM may limit Windows performance.
+                                            </span>
+                                            <span v-if="memoryInfo.availableGB < ramGB" class="block">
+                                                You don't have enough unused memory available to allocate the requested
+                                                amount of RAM. You currently have ~{{ memoryInfo.availableGB }} GB of
+                                                unused memory available. If you continue with this amount of RAM, the
+                                                container will likely crash.
+                                            </span>
                                         </span>
                                     </span>
                                 </label>
@@ -558,7 +579,7 @@
                                         @change="(e: any) => (ramGB = Number(e.target.value))"
                                         class="w-[50%]"
                                         :value="ramGB"
-                                        :min="MIN_RAM_GB"
+                                        :min="MIN_VM_RAM_GB"
                                         :max="specs.ramGB"
                                         step="1"
                                     />
@@ -607,39 +628,160 @@
                         </div>
                     </div>
 
-                    <!-- Home Folder Sharing -->
-                    <div v-if="currentStep.id === StepID.SHOULD_SHARE_HOME_FOLDER" class="step-block">
-                        <h1 class="text-3xl font-semibold">{{ currentStep.title }}</h1>
+                    <!-- GPU Acceleration -->
+                    <div v-if="currentStep.id === StepID.GPU_CONFIG" class="step-block">
+                        <h1 class="text-3xl font-semibold">GPU Acceleration</h1>
                         <p class="text-lg text-gray-400">
-                            WinBoat allows you to share your Linux home folder with the Windows virtual machine, here
-                            you can choose whether to enable this feature or not.
-                        </p>
-                        <p class="text-lg text-gray-400">
-                            <b>⚠️ WARNING:</b>
-                            Sharing your home folder exposes your Linux files to Windows-specific malware and viruses.
-                            Only enable this feature if you understand the risks involved. Always be careful with the
-                            files you download and open in Windows.
+                            Enable the experimental Helios graphics driver to accelerate Windows with your GPU. Helios
+                            currently supports Vulkan, DirectX 11, OpenGL and OpenCL. This currently requires Docker.
                         </p>
 
                         <x-checkbox
                             class="my-4"
-                            @toggle="homeFolderSharing = !homeFolderSharing"
-                            :toggled="homeFolderSharing"
+                            :disabled="
+                                containerRuntime !== ContainerRuntimes.DOCKER ||
+                                !renderDevices.length ||
+                                !heliosAvailable
+                            "
+                            :toggled="gpuEnabled"
+                            @toggle="gpuEnabled = !gpuEnabled"
                         >
-                            <x-label><strong>Enable home folder sharing</strong></x-label>
+                            <x-label><strong>Enable GPU acceleration</strong></x-label>
+                            <x-label class="text-gray-400">
+                                Uses an experimental test-signed Windows display driver
+                            </x-label>
+                        </x-checkbox>
+
+                        <p v-if="!renderDevices.length" class="text-sm text-red-400">
+                            No accessible DRM render devices were found in <span class="font-mono">/dev/dri</span>.
+                        </p>
+                        <p v-else-if="!heliosAvailable" class="text-sm text-red-400">
+                            This WinBoat build does not include the Helios driver bundle.
+                        </p>
+
+                        <div v-if="gpuEnabled" class="flex flex-col gap-6 mt-4">
+                            <div>
+                                <label for="select-render-device" class="text-sm text-neutral-400">Render Device</label>
+                                <x-select
+                                    :key="renderDevice"
+                                    :value="renderDevice"
+                                    id="select-render-device"
+                                    class="w-full max-w-2xl"
+                                    @change="(e: any) => (renderDevice = e.detail.newValue)"
+                                >
+                                    <x-menu>
+                                        <x-menuitem
+                                            v-for="device in renderDevices"
+                                            :key="device.path"
+                                            :value="device.path"
+                                            :toggled="renderDevice === device.path"
+                                        >
+                                            <x-label>
+                                                {{ device.name }} —
+                                                {{ device.vramGB ? `${device.vramGB} GB` : "shared memory" }}
+                                            </x-label>
+                                        </x-menuitem>
+                                    </x-menu>
+                                </x-select>
+                                <p v-if="selectedGpu" class="text-sm text-gray-400 mt-2">
+                                    {{ selectedGpu.path }} · {{ selectedGpu.driver }} ·
+                                    {{
+                                        selectedGpu.vramGB
+                                            ? `${selectedGpu.vramGB} GB VRAM detected`
+                                            : "shared GPU memory"
+                                    }}
+                                </p>
+                                <p v-if="nvidiaGpuError" class="text-sm text-red-400 mt-2">
+                                    {{ nvidiaGpuError }}
+                                </p>
+                            </div>
+
+                            <div>
+                                <label for="select-gpu-vram" class="text-sm text-neutral-400">Video Memory Limit</label>
+                                <div class="flex flex-row gap-4 items-center">
+                                    <x-slider
+                                        id="select-gpu-vram"
+                                        class="w-[50%]"
+                                        :value="gpuVramGB"
+                                        min="1"
+                                        :max="gpuVramMaxGB"
+                                        step="1"
+                                        ticks
+                                        @change="(e: any) => (gpuVramGB = Number(e.target.value))"
+                                    />
+                                    <x-label>{{ gpuVramGB }} GB</x-label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-row gap-4 mt-6">
+                            <x-button class="px-6" @click="currentStepIdx--">Back</x-button>
+                            <x-button
+                                toggled
+                                class="px-6"
+                                :disabled="gpuEnabled && (!renderDevice || !!nvidiaGpuError)"
+                                @click="currentStepIdx++"
+                            >
+                                Next
+                            </x-button>
+                        </div>
+                    </div>
+
+                    <!-- Folder Sharing -->
+                    <div v-if="currentStep.id === StepID.SHOULD_SHARE_HOME_FOLDER" class="step-block">
+                        <h1 class="text-3xl font-semibold">Folder Sharing</h1>
+                        <p class="text-lg text-gray-400">
+                            WinBoat allows you to share a folder from your Linux system with the Windows virtual
+                            machine. You can choose whether to enable this feature and select which folder to share.
+                        </p>
+                        <p class="text-lg text-gray-400">
+                            <b>⚠️ WARNING:</b>
+                            Sharing a folder exposes your Linux files to Windows-specific malware and viruses. Only
+                            enable this feature if you understand the risks involved. Always be careful with the files
+                            you download and open in Windows.
+                        </p>
+
+                        <x-checkbox class="my-4" @toggle="folderSharing = !folderSharing" :toggled="folderSharing">
+                            <x-label><strong>Enable folder sharing</strong></x-label>
                             <x-label class="text-gray-400">
                                 By checking this box, you acknowledge the risks mentioned above
                             </x-label>
                         </x-checkbox>
 
+                        <div v-if="folderSharing" class="flex flex-col gap-2 my-4">
+                            <label class="text-sm text-neutral-400">Shared Folder Location</label>
+                            <div class="flex flex-row items-center">
+                                <x-input
+                                    type="text"
+                                    placeholder="Select Folder to Share"
+                                    readonly
+                                    :value="sharedFolderPath"
+                                    class="!max-w-full w-[300px] rounded-r-none"
+                                >
+                                    <x-icon href="#folder"></x-icon>
+                                    <x-label>/your/shared/folder</x-label>
+                                </x-input>
+                                <x-button class="!rounded-l-none" toggled @click="selectSharedFolder">
+                                    {{ sharedFolderPath ? "Change" : "Select" }}
+                                </x-button>
+                            </div>
+                        </div>
+
                         <div class="flex flex-row gap-4 mt-6">
                             <x-button class="px-6" @click="currentStepIdx--">Back</x-button>
-                            <x-button toggled class="px-6" @click="currentStepIdx++">Next</x-button>
+                            <x-button
+                                toggled
+                                class="px-6"
+                                @click="currentStepIdx++"
+                                :disabled="folderSharing && !sharedFolderPath"
+                            >
+                                Next
+                            </x-button>
                         </div>
                     </div>
 
                     <!-- Review -->
-                    <div v-if="currentStep.id === StepID.REVIEW" class="step-block">
+                    <div v-if="currentStep.id === StepID.REVIEW" class="step-block review-step">
                         <h1 class="text-3xl font-semibold">{{ currentStep.title }}</h1>
                         <p class="text-lg text-gray-400">
                             Please review the settings you've chosen for your WinBoat installation. If everything looks
@@ -675,13 +817,30 @@
                                     <span class="text-base text-white">{{ diskSpaceGB }} GB</span>
                                 </div>
                                 <div class="flex flex-col">
+                                    <span class="text-sm text-gray-400">GPU Acceleration</span>
+                                    <span class="text-base text-white">{{ gpuEnabled ? "Enabled" : "Disabled" }}</span>
+                                </div>
+                                <div v-if="gpuEnabled" class="flex flex-col">
+                                    <span class="text-sm text-gray-400">GPU Video Memory</span>
+                                    <span class="text-base text-white">{{ gpuVramGB }} GB</span>
+                                </div>
+                                <div class="flex flex-col">
                                     <span class="text-sm text-gray-400">Username</span>
                                     <span class="text-base text-white">{{ username }}</span>
                                 </div>
-                                <div class="flex flex-col">
-                                    <span class="text-sm text-gray-400">Install Location</span>
-                                    <span class="text-base text-white">{{ installFolder }}</span>
-                                </div>
+                            </div>
+
+                            <div v-if="gpuEnabled" class="flex flex-col min-w-0">
+                                <span class="text-sm text-gray-400">Render Device</span>
+                                <span class="text-base text-white truncate" :title="selectedGpu?.name || renderDevice">
+                                    {{ selectedGpu?.name || renderDevice }}
+                                </span>
+                            </div>
+                            <div class="flex flex-col min-w-0">
+                                <span class="text-sm text-gray-400">Install Location</span>
+                                <span class="text-base text-white truncate" :title="installFolder">{{
+                                    installFolder
+                                }}</span>
                             </div>
                         </div>
 
@@ -707,16 +866,19 @@
                             WinBoat is now installing Windows. Please be patient as this may take up to an hour. In the
                             meantime, you can grab a coffee and check the installation status
                             <span v-if="linkableInstallSteps.includes(installState)">
-                                <a :href="`http://127.0.0.1:${vncPort}`" @click="openAnchorLink">in your browser</a>.
+                                <a :href="NOVNC_URL" @click="openAnchorLink">in your browser</a>.
                             </span>
                             <span v-else>
                                 over at
                                 <div
-                                    style="animation-duration: 3s!important;"
+                                    style="animation-duration: 3s !important"
                                     class="ml-1 inline-block relative text-transparent rounded-md bg-neutral-700 animate-pulse select-none"
                                 >
                                     in your browser
-                                    <Icon icon="eos-icons:three-dots-loading" class="pointer-events-none absolute top-0 left-[50%] size-16 text-violet-400 -translate-x-[50%] -translate-y-[27.5%]"></Icon>
+                                    <Icon
+                                        icon="eos-icons:three-dots-loading"
+                                        class="pointer-events-none absolute top-0 left-[50%] size-16 text-violet-400 -translate-x-[50%] -translate-y-[27.5%]"
+                                    ></Icon>
                                 </div>
                             </span>
                         </p>
@@ -783,22 +945,35 @@
 
 <script setup lang="ts">
 import { Icon } from "@iconify/vue";
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { computedAsync } from "@vueuse/core";
 import { InstallConfiguration, Specs } from "../../types";
 import { getSpecs, getMemoryInfo, defaultSpecs, satisfiesPrequisites, type MemoryInfo } from "../lib/specs";
-import { WINDOWS_VERSIONS, WINDOWS_LANGUAGES, type WindowsVersionKey } from "../lib/constants";
+import {
+    MIN_HOST_RAM_GB,
+    MIN_VM_RAM_GB,
+    DEFAULT_GPU_VRAM_GB,
+    NOVNC_URL,
+    RECOMMENDED_VM_RAM_GB,
+    WINDOWS_VERSIONS,
+    WINDOWS_LANGUAGES,
+    type WindowsVersionKey,
+} from "../lib/constants";
 import { InstallManager, InstallStates } from "../lib/install";
 import { openAnchorLink } from "../utils/openLink";
+import { setIntervalImmediately } from "../utils/interval";
 import license from "../assets/LICENSE.txt?raw";
-import {
-    ContainerRuntimes,
-    DockerSpecs,
-    PodmanSpecs,
-    getContainerSpecs,
-} from "../lib/containers/common";
+import { ContainerRuntimes, getContainerSpecs, type ContainerSpecs } from "../lib/containers/common";
 import { WinboatConfig } from "../lib/config";
+import { guestServerOemDir } from "../utils/guestServer";
+import {
+    getGpuVramMaxGB,
+    getRenderDevices,
+    hasNvidiaContainerSupport,
+    shouldCheckNvidiaContainerSupport,
+    type RenderDevice,
+} from "../lib/gpu";
 
 const path: typeof import("path") = require("node:path");
 const electron: typeof import("electron") = require("electron").remote || require("@electron/remote");
@@ -819,6 +994,7 @@ enum StepID {
     INSTALL_LOCATION = "STEP_INSTALL_LOCATION",
     WINDOWS_CONFIG = "STEP_WINDOWS_CONFIG",
     HARDWARE_CONFIG = "STEP_HARDWARE_CONFIG",
+    GPU_CONFIG = "STEP_GPU_CONFIG",
     USER_CONFIG = "STEP_USER_CONFIG",
     SHOULD_SHARE_HOME_FOLDER = "STEP_SHOULD_SHARE_HOME_FOLDER",
     REVIEW = "STEP_OVERVIEW",
@@ -863,8 +1039,13 @@ const steps: Step[] = [
         icon: "famicons:hardware-chip-outline",
     },
     {
+        id: StepID.GPU_CONFIG,
+        title: "GPU Acceleration",
+        icon: "mdi:gpu",
+    },
+    {
         id: StepID.SHOULD_SHARE_HOME_FOLDER,
-        title: "Home Folder Sharing",
+        title: "Folder Sharing",
         icon: "line-md:link",
     },
     {
@@ -885,8 +1066,8 @@ const steps: Step[] = [
 ];
 
 const MIN_CPU_CORES = 1;
-const MIN_RAM_GB = 2;
 const MIN_DISK_GB = 32;
+const PREREQUISITE_REFRESH_INTERVAL_MS = 5000;
 const $router = useRouter();
 const specs = ref<Specs>({ ...defaultSpecs });
 const currentStepIdx = ref(0);
@@ -897,27 +1078,54 @@ const windowsLanguage = ref("English");
 const customIsoPath = ref("");
 const customIsoFileName = ref("");
 const cpuCores = ref(2);
-const ramGB = ref(4);
+const ramGB = ref(RECOMMENDED_VM_RAM_GB);
 const memoryInfo = ref<MemoryInfo>({ totalGB: 0, availableGB: 0 });
 const memoryInterval = ref<NodeJS.Timeout | null>(null);
 const diskSpaceGB = ref(32);
+const gpuEnabled = ref(false);
+const gpuVramGB = ref(DEFAULT_GPU_VRAM_GB);
+const renderDevices = ref<RenderDevice[]>([]);
+const renderDevice = ref("");
+const heliosAvailable = ref(false);
+const nvidiaContainerSupportAvailable = ref(false);
+const selectedGpu = computed(() => renderDevices.value.find(device => device.path === renderDevice.value));
+const gpuVramMaxGB = computed(() => getGpuVramMaxGB(selectedGpu.value?.vramGB));
+const nvidiaGpuError = computed(() => {
+    if (!shouldCheckNvidiaContainerSupport(gpuEnabled.value, selectedGpu.value)) return "";
+    if (!selectedGpu.value?.nvidiaUuid) {
+        return "WinBoat could not map this render node to an NVIDIA GPU through nvidia-smi.";
+    }
+    if (!nvidiaContainerSupportAvailable.value) {
+        return "NVIDIA Container Toolkit is not exposing this GPU to Docker through a runtime or CDI.";
+    }
+    return "";
+});
 const username = ref("winboat");
 const password = ref("");
 const confirmPassword = ref("");
-const homeFolderSharing = ref(false);
+const folderSharing = ref(false);
+const sharedFolderPath = ref("");
 const installState = ref<InstallStates>(InstallStates.IDLE);
 const preinstallMsg = ref("");
 const containerRuntime = ref(ContainerRuntimes.DOCKER);
-const vncPort = ref(8006);
+const containerSpecs = ref<ContainerSpecs>();
+const checkingPrerequisites = ref(false);
+const prerequisiteRefreshSequence = ref(0);
+let prerequisiteInterval: NodeJS.Timeout | null = null;
+let prerequisiteRefreshQueued = false;
+let nvidiaSupportCheckSequence = 0;
 // These are the install steps where the container is actually up and running
-const linkableInstallSteps = [ InstallStates.MONITORING_PREINSTALL, InstallStates.INSTALLING_WINDOWS, InstallStates.COMPLETED ];
+const linkableInstallSteps = [
+    InstallStates.MONITORING_PREINSTALL,
+    InstallStates.INSTALLING_WINDOWS,
+    InstallStates.PROVISIONING_GPU_DRIVERS,
+    InstallStates.INSTALLING_GPU_DRIVERS,
+    InstallStates.COMPLETED,
+];
 
 let installManager: InstallManager | null;
 
 onMounted(async () => {
-    specs.value = await getSpecs();
-    console.log("Specs", specs.value);
-
     memoryInfo.value = await getMemoryInfo();
     memoryInterval.value = setInterval(async () => {
         memoryInfo.value = await getMemoryInfo();
@@ -926,19 +1134,112 @@ onMounted(async () => {
 
     username.value = os.userInfo().username;
     console.log("Username", username.value);
+
+    // Set default shared folder path to home directory
+    sharedFolderPath.value = os.homedir();
+    heliosAvailable.value = fs.existsSync(path.join(guestServerOemDir(), "helios", "Install-Helios.ps1"));
+
+    renderDevices.value = await getRenderDevices();
+    renderDevice.value = renderDevices.value[0]?.path || "";
+    gpuVramGB.value = Math.min(gpuVramGB.value, gpuVramMaxGB.value);
 });
 
 onUnmounted(() => {
     if (memoryInterval.value) {
         clearInterval(memoryInterval.value);
     }
+
+    stopPrerequisitePolling();
 });
 
-const containerSpecs = computedAsync(async () => {
-    return await getContainerSpecs(containerRuntime.value);
+watch(currentStep, step => {
+    stopPrerequisitePolling();
+
+    if (step.id === StepID.PREREQUISITES) {
+        prerequisiteInterval = setIntervalImmediately(() => {
+            prerequisiteRefreshSequence.value++;
+            void refreshPrerequisites();
+        }, PREREQUISITE_REFRESH_INTERVAL_MS);
+    }
 });
 
-function containerInstalled(containerSpecs: DockerSpecs | PodmanSpecs | undefined) {
+// Watch for when folder sharing is enabled and set default path
+watch(folderSharing, newValue => {
+    if (newValue && !sharedFolderPath.value) {
+        sharedFolderPath.value = os.homedir();
+    }
+});
+
+async function refreshPrerequisites() {
+    if (checkingPrerequisites.value) {
+        prerequisiteRefreshQueued = true;
+        return;
+    }
+
+    checkingPrerequisites.value = true;
+
+    try {
+        do {
+            prerequisiteRefreshQueued = false;
+            const runtime = containerRuntime.value;
+            const [newSpecs, newContainerSpecs] = await Promise.all([getSpecs(), getContainerSpecs(runtime)]);
+
+            if (runtime === containerRuntime.value) {
+                specs.value = newSpecs;
+                containerSpecs.value = newContainerSpecs;
+            } else {
+                prerequisiteRefreshQueued = true;
+            }
+        } while (prerequisiteRefreshQueued);
+    } catch (e) {
+        console.error("Error checking prerequisites:", e);
+    } finally {
+        checkingPrerequisites.value = false;
+    }
+}
+
+function stopPrerequisitePolling() {
+    prerequisiteRefreshQueued = false;
+    if (!prerequisiteInterval) return;
+
+    clearInterval(prerequisiteInterval);
+    prerequisiteInterval = null;
+}
+
+function handleContainerRuntimeChange(e: CustomEvent<{ newValue: ContainerRuntimes }>) {
+    containerSpecs.value = undefined;
+    containerRuntime.value = e.detail.newValue;
+    if (containerRuntime.value !== ContainerRuntimes.DOCKER) gpuEnabled.value = false;
+    void refreshPrerequisites();
+}
+
+async function refreshNvidiaContainerSupport() {
+    const sequence = ++nvidiaSupportCheckSequence;
+    const device = selectedGpu.value;
+    nvidiaContainerSupportAvailable.value = false;
+
+    if (!shouldCheckNvidiaContainerSupport(gpuEnabled.value, device) || !device?.nvidiaUuid) {
+        return;
+    }
+
+    const available = await hasNvidiaContainerSupport(device.nvidiaUuid);
+    if (sequence === nvidiaSupportCheckSequence) nvidiaContainerSupportAvailable.value = available;
+}
+
+watch(renderDevice, () => {
+    gpuVramGB.value = Math.min(gpuVramGB.value, gpuVramMaxGB.value);
+});
+
+watch([gpuEnabled, selectedGpu], () => {
+    void refreshNvidiaContainerSupport();
+});
+
+function continueFromPrerequisites() {
+    if (!satisfiesPrequisites(specs.value, containerSpecs.value)) return;
+    currentStepIdx.value++;
+}
+
+function containerInstalled(containerSpecs: ContainerSpecs | undefined) {
     if (!containerSpecs) return false;
     if ("dockerInstalled" in containerSpecs) return containerSpecs.dockerInstalled;
     if ("podmanInstalled" in containerSpecs) return containerSpecs.podmanInstalled;
@@ -953,9 +1254,9 @@ const usernameErrors = computed(() => {
         errors.push("Must be at least 2 characters long");
     }
 
-    // Only alphanumeric characters are allowed
-    if (!/^[a-zA-Z0-9]+$/.test(username.value)) {
-        errors.push("Must only contain alphanumeric characters");
+    // Only ASCII letters, numbers, and dashes are allowed
+    if (!/^[a-zA-Z0-9-]+$/.test(username.value)) {
+        errors.push("Must only contain ASCII letters, numbers, and dashes");
     }
 
     return errors;
@@ -1069,6 +1370,20 @@ const installFolderDiskSpaceGB = computedAsync(async () => {
     return freeGB;
 });
 
+function selectSharedFolder() {
+    electron.dialog
+        .showOpenDialog({
+            title: "Select Folder to Share",
+            properties: ["openDirectory"],
+            defaultPath: sharedFolderPath.value || os.homedir(),
+        })
+        .then(result => {
+            if (!result.canceled && result.filePaths.length > 0) {
+                sharedFolderPath.value = result.filePaths[0];
+            }
+        });
+}
+
 function install() {
     const installConfig: InstallConfiguration = {
         windowsVersion: windowsVersion.value,
@@ -1079,9 +1394,12 @@ function install() {
         diskSpaceGB: diskSpaceGB.value,
         username: username.value,
         password: password.value,
-        shareHomeFolder: homeFolderSharing.value,
+        sharedFolderPath: folderSharing.value ? sharedFolderPath.value : undefined,
         ...(customIsoPath.value ? { customIsoPath: customIsoPath.value } : {}),
         container: containerRuntime.value, // Hardcdde for now
+        gpuEnabled: gpuEnabled.value,
+        gpuVramGB: gpuVramGB.value,
+        renderDevice: renderDevice.value,
     };
 
     const wbConfig = WinboatConfig.getInstance(); // Create winboat config.
@@ -1098,10 +1416,6 @@ function install() {
     installManager.emitter.on("preinstallMsg", msg => {
         preinstallMsg.value = msg;
         console.log("Preinstall msg", msg);
-    });
-
-    installManager.emitter.on("vncPortChanged", port => {
-        vncPort.value = port;
     });
 
     installManager.install();
@@ -1129,6 +1443,32 @@ function install() {
 
 .step-block {
     @apply flex flex-col gap-4 h-full justify-center;
+}
+
+.review-step {
+    @apply h-auto min-h-full justify-start;
+}
+
+.review-step > :first-child {
+    margin-top: auto;
+}
+
+.review-step > :last-child {
+    margin-bottom: auto;
+}
+
+.prerequisite-refresh-progress {
+    transform-origin: left;
+    animation: prerequisite-refresh 5s linear forwards;
+}
+
+@keyframes prerequisite-refresh {
+    from {
+        transform: scaleX(0);
+    }
+    to {
+        transform: scaleX(1);
+    }
 }
 
 .flex p {
