@@ -17,8 +17,8 @@ import Index from "./views/Config/Index.vue";
 export const routes: RouteRecordRaw[] = [
     { path: "/", component: Blank, meta: { icon: "line-md:loading-loop" } },
     { path: "/Home", component: Home, meta: { icon: "fluent:home-32-filled", nav: true } },
-    { path: "/Migration", component: Migration, meta: { icon: "fluent:home-32-filled", } },
-    { path: "/Setup", component: SetupUI, meta: { icon: "fluent-mdl2:install-to-drive", } },
+    { path: "/Migration", component: Migration, meta: { icon: "fluent:home-32-filled", standalone: true } },
+    { path: "/Setup", component: SetupUI, meta: { icon: "fluent-mdl2:install-to-drive", standalone: true } },
     { path: "/Apps", component: Apps, meta: { icon: "fluent:apps-32-filled", nav: true } },
     { 
         path: "/Configuration", 

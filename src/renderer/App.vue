@@ -93,7 +93,7 @@
 
         <!-- UI / SetupUI -->
         <div
-            v-if="!['SetupUI', 'Migration'].includes($route.name?.toString() || '')"
+            v-if="!$route.meta!.standalone"
             class="flex flex-row h-[calc(100vh-2rem)]"
         >
             <x-nav class="flex flex-col flex-none gap-0.5 w-72 backdrop-blur-xl bg-gray-500/10 backdrop-contrast-90">
@@ -118,7 +118,7 @@
                 >
                     <x-navitem>
                         <Icon class="mr-4 w-5 h-5" :icon="(route.meta!.icon as string)" />
-                        <x-label>{{ route.path }}</x-label>
+                        <x-label>{{ route.path.slice(1) }}</x-label>
                     </x-navitem>
                 </RouterLink>
                 <div class="flex flex-col justify-end items-center p-4 h-full">
